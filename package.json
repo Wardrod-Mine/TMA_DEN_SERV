@@ -1,0 +1,6 @@
+{
+  "name": "tma-server",
+  "type": "module",
+  "dependencies": { "express": "^4.19.0", "cors": "^2.8.5" },
+  "scripts": { "start": "node server/index.js" }
+}
