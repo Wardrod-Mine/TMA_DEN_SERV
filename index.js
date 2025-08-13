@@ -1,5 +1,6 @@
 // index.js — Express API + Telegraf bot (webhook)
 import express from "express";
+import crypto from "crypto";
 import cors from "cors";
 import { Telegraf } from "telegraf";
 
@@ -39,6 +40,44 @@ app.post("/web-data", async (req, res) => {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+app.post("/report-error", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) {
+      return res.status(403).json({ ok:false, error:"bad initData" });
+    }
+
+    const { debug } = req.body || {};
+    const u = debug?.user;
+    const who = u?.id
+      ? `<a href="tg://user?id=${u.id}">${esc(u.username ? "@"+u.username : (u.first_name || u.id))}</a>`
+      : "неизвестно";
+
+    const txt = [
+      "🐞 <b>Отчёт об ошибке</b>",
+      `<b>От:</b> ${who}`,
+      debug?.url ? `<b>URL:</b> ${esc(debug.url)}` : null,
+      (debug?.platform || debug?.colorScheme) ? `<b>Платформа:</b> ${esc(debug.platform||"-")} • Тема: ${esc(debug.colorScheme||"-")}` : null,
+      debug?.appStep ? `<b>Шаг:</b> ${esc(debug.appStep)}` : null,
+      debug?.selection ? `<b>Выбор:</b> ${esc(JSON.stringify(debug.selection))}` : null,
+      debug?.lastError?.message ? `\n<b>Ошибка:</b> ${esc(debug.lastError.message)}` : null,
+      debug?.lastError?.stack ? `<b>Стек:</b>\n<pre>${esc(String(debug.lastError.stack)).slice(0,1800)}</pre>` : null,
+      `Время: ${new Date(debug?.ts || Date.now()).toLocaleString("ru-RU")}`
+    ].filter(Boolean).join("\n");
+
+    if (!ADMIN_CHAT_IDS.length) {
+      return res.status(500).json({ ok:false, error:"ADMIN_CHAT_IDS is empty" });
+    }
+
+    await notifyAdmins(txt); // уже есть в index.js
+    res.json({ ok:true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false });
+  }
+});
+
 
 // ===== Telegraf bot (вебхук) =====
 if (!BOT_TOKEN) {
@@ -105,6 +144,28 @@ function formatLead(p, from) {
     `Время: ${new Date(p.ts || Date.now()).toLocaleString("ru-RU")}`
   ].filter(Boolean).join("\n");
 }
+
+function verifyInitData(initData, botToken) {
+  if (!initData || !botToken) return false;
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  if (!hash) return false;
+
+  const data = [];
+  params.forEach((v, k) => { if (k !== "hash") data.push(`${k}=${v}`); });
+  data.sort();
+  const dataCheckString = data.join("\n");
+
+  const secret = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
+  const calc = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex");
+
+  const authDate = Number(params.get("auth_date") || "0");
+  const fresh = !authDate || (Date.now()/1000 - authDate) < 24*60*60; // не старше суток
+
+  return calc === hash && fresh;
+}
+
+
 async function notifyAdmins(text, tg) {
   // отправка через Telegram HTTP API (без зависимости от контекста Telegraf)
   await Promise.all(ADMIN_CHAT_IDS.map(id =>
