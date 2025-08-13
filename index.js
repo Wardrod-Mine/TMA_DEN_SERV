@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 10000;
 const BOT_TOKEN = process.env.BOT_TOKEN;              // токен бота
 const ADMIN_CHAT_IDS = (process.env.ADMIN_CHAT_IDS || "")
   .split(",").map(s => s.trim()).filter(Boolean);     // 12345,-100...
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
   .split(",").map(s => s.trim()).filter(Boolean);     // домены фронта
 const SERVER_URL = process.env.SERVER_URL;            // https://tma-den-serv.onrender.com
 const SECRET_TOKEN = process.env.SECRET_TOKEN || "";  // любой секрет для вебхука
@@ -100,7 +100,7 @@ function formatLead(p, from) {
     p.name ? `Имя: <b>${esc(p.name)}</b>` : null,
     p.phone ? `Телефон: <b>${esc(p.phone)}</b>` : null,
     p.city ? `Город: <b>${esc(p.city)}</b>` : null,
-    p.comment ? `Комментарий: ${esc(p.comment)}</b>` : null,
+    p.comment ? `Комментарий: ${esc(p.comment)}` : null,
     from ? `\nОт: <a href="tg://user?id=${from.id}">${esc(from.username ? "@"+from.username : from.first_name || "user")}</a>` : null,
     `Время: ${new Date(p.ts || Date.now()).toLocaleString("ru-RU")}`
   ].filter(Boolean).join("\n");
