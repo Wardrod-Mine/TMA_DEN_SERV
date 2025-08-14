@@ -19,19 +19,26 @@ let photosStore = {};
 try { photosStore = JSON.parse(fs.readFileSync(PHOTOS_DB, "utf8")); } catch {}
 function savePhotos() { fs.writeFileSync(PHOTOS_DB, JSON.stringify(photosStore, null, 2)); }
 
-const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID || (ADMIN_CHAT_IDS[0] || null); // куда шлём sendPhoto
+// === admin ids & storage chat (ПЕРЕД любыми ссылками на них) ===
+const ADMIN_CHAT_IDS = String(process.env.ADMIN_CHAT_IDS || "")
+  .split(/\s*,\s*/).filter(Boolean);          // ["123", "456"]
+
+const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID
+  ? String(process.env.STORAGE_CHAT_ID)
+  : (ADMIN_CHAT_IDS[0] || null);
+
 function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
 
 // ===== ENV =====
 const PORT = process.env.PORT || 10000;
-const BOT_TOKEN = process.env.BOT_TOKEN;              // токен бота
-const ADMIN_CHAT_IDS = (process.env.ADMIN_CHAT_IDS || "")
-  .split(",").map(s => s.trim()).filter(Boolean);     // 12345,-100...
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
-  .split(",").map(s => s.trim()).filter(Boolean);     // домены фронта
-const SERVER_URL = process.env.SERVER_URL;            // https://tma-den-serv.onrender.com
-const SECRET_TOKEN = process.env.SECRET_TOKEN || "";  // любой секрет для вебхука
-const WEBHOOK_PATH = "/tg-webhook";                   // путь вебхука
+const BOT_TOKEN = process.env.BOT_TOKEN;                 // токен бота
+
+// домены фронта (через запятую). Поддержим и ALLOWED_ORIGIN, и ALLOWED_ORIGINS
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
+  .split(",").map(s => s.trim()).filter(Boolean);
+const SERVER_URL = process.env.SERVER_URL;               // https://tma-den-serv.onrender.com
+const SECRET_TOKEN = process.env.SECRET_TOKEN || "";     // секрет для вебхука
+const WEBHOOK_PATH = "/tg-webhook";
 
 // === anti-spam helpers ===
 const _spam = new Map();
