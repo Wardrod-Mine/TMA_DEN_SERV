@@ -15,6 +15,30 @@ const SERVER_URL = process.env.SERVER_URL;            // https://tma-den-serv.on
 const SECRET_TOKEN = process.env.SECRET_TOKEN || "";  // любой секрет для вебхука
 const WEBHOOK_PATH = "/tg-webhook";                   // путь вебхука
 
+// === anti-spam helpers ===
+const _spam = new Map();
+/** Разрешает не более `max` событий за окно `windowMs` по ключу `key`. */
+function hitOk(key, windowMs = 30_000, max = 1) {
+  const now = Date.now();
+  const arr = _spam.get(key) || [];
+  const fresh = arr.filter(t => now - t < windowMs);
+  if (fresh.length >= max) return false;
+  fresh.push(now);
+  _spam.set(key, fresh);
+  return true;
+}
+/** Достаём user.id из безопасного initData WebApp (не из body). */
+function userIdFromInitData(initData) {
+  try {
+    const p = new URLSearchParams(initData || "");
+    const u = p.get("user");
+    if (!u) return null;
+    const obj = JSON.parse(u);
+    return obj?.id || null;
+  } catch { return null; }
+}
+
+
 // ===== Express =====
 const app = express();
 app.use(express.json());
@@ -31,6 +55,10 @@ app.get("/", (_, res) => res.send("TMA backend is running"));
 // Приём «ручных» POST из фронта (опционально)
 app.post("/web-data", async (req, res) => {
   const p = req.body || {};
+  const key = p?.phone ? `leadPhone:${p.phone}` : `ip:${req.ip}`;
+  if (!hitOk(key, 30_000, 1)) {
+    return res.status(429).json({ ok:false, error:"Too Many Requests" });
+  }
   const text = formatLead(p);
   try {
     await notifyAdmins(text);
@@ -47,37 +75,62 @@ app.post("/report-error", async (req, res) => {
     if (!verifyInitData(initData, BOT_TOKEN)) {
       return res.status(403).json({ ok:false, error:"bad initData" });
     }
+    const uid = userIdFromInitData(initData) || req.ip;
+    if (!hitOk(`er:${uid}`, 30_000, 1)) {
+      return res.status(429).json({ ok:false, error:"Too Many Requests" });
+    }
 
-    const { debug } = req.body || {};
+
+    const { details, debug } = req.body || {};
     const u = debug?.user;
+
+    // Имя/юзер — БЕЗ кликабельной ссылки
     const who = u?.id
-      ? `<a href="tg://user?id=${u.id}">${esc(u.username ? "@"+u.username : (u.first_name || u.id))}</a>`
+      ? esc(u.username ? `@${u.username} (id ${u.id})` : `${u.first_name || "Пользователь"} (id ${u.id})`)
       : "неизвестно";
 
-    const txt = [
+    // Красивое форматирование, без поля URL
+    const parts = [
       "🐞 <b>Отчёт об ошибке</b>",
-      `<b>От:</b> ${who}`,
-      debug?.url ? `<b>URL:</b> ${esc(debug.url)}` : null,
-      (debug?.platform || debug?.colorScheme) ? `<b>Платформа:</b> ${esc(debug.platform||"-")} • Тема: ${esc(debug.colorScheme||"-")}` : null,
-      debug?.appStep ? `<b>Шаг:</b> ${esc(debug.appStep)}` : null,
-      debug?.selection ? `<b>Выбор:</b> ${esc(JSON.stringify(debug.selection))}` : null,
-      debug?.lastError?.message ? `\n<b>Ошибка:</b> ${esc(debug.lastError.message)}` : null,
-      debug?.lastError?.stack ? `<b>Стек:</b>\n<pre>${esc(String(debug.lastError.stack)).slice(0,1800)}</pre>` : null,
-      `Время: ${new Date(debug?.ts || Date.now()).toLocaleString("ru-RU")}`
-    ].filter(Boolean).join("\n");
+
+      `👤 <b>Пользователь:</b> ${who}`,
+      (debug?.platform || debug?.colorScheme)
+        ? `📱 <b>Клиент:</b> ${esc(debug.platform || "-")} • Тема: ${esc(debug.colorScheme || "-")}`
+        : null,
+      debug?.appStep ? `🧭 <b>Шаг:</b> ${esc(debug.appStep)}` : null,
+
+      debug?.selection
+        ? `🧩 <b>Выбор:</b>\n<pre>${esc(JSON.stringify(debug.selection, null, 2)).slice(0, 1200)}</pre>`
+        : null,
+
+      details
+        ? `📝 <b>Комментарий:</b>\n<pre>${esc(details).slice(0, 1500)}</pre>`
+        : null,
+
+      debug?.lastError?.message
+        ? `⚠️ <b>Ошибка:</b> ${esc(debug.lastError.message)}`
+        : null,
+
+      debug?.lastError?.stack
+        ? `🧵 <b>Стек:</b>\n<pre>${esc(String(debug.lastError.stack)).slice(0, 1800)}</pre>`
+        : null,
+
+      `⏱ <b>Время:</b> ${new Date(debug?.ts || Date.now()).toLocaleString("ru-RU")}`
+    ].filter(Boolean);
+
+    const msg = parts.join("\n\n");
 
     if (!ADMIN_CHAT_IDS.length) {
       return res.status(500).json({ ok:false, error:"ADMIN_CHAT_IDS is empty" });
     }
 
-    await notifyAdmins(txt); // уже есть в index.js
+    await notifyAdmins(msg);
     res.json({ ok:true });
   } catch (e) {
     console.error(e);
     res.status(500).json({ ok:false });
   }
 });
-
 
 // ===== Telegraf bot (вебхук) =====
 if (!BOT_TOKEN) {
@@ -89,6 +142,11 @@ if (!BOT_TOKEN) {
 
   // данные из WebApp
   bot.on("message", async (ctx) => {
+    const uid = ctx.from?.id || "anon";
+    if (!hitOk(`lead:${uid}`, 30_000, 1)) {
+      return ctx.reply("⏳ Пожалуйста, не чаще одного раза в 30 секунд.");
+    }
+
     const raw = ctx.message?.web_app_data?.data;
     if (!raw) return;
     let p; try { p = JSON.parse(raw); } catch { return; }
