@@ -1,4 +1,3 @@
-// index.js — Express API + Telegraf bot (webhook)
 import express from "express";
 import crypto from "crypto";
 import cors from "cors";
@@ -10,10 +9,22 @@ import path from "path";
 import { fileURLToPath } from "url";
 import multer from "multer";
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // до 8MB
-
+// --- продукты: хранение в products.json ---
+// (импорты НЕ повторяем)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const PRODUCTS_DB = path.join(__dirname, "products.json");
+let productsStore = [];
+try { productsStore = JSON.parse(fs.readFileSync(PRODUCTS_DB, "utf8")); } catch {}
+function saveProducts(){ fs.writeFileSync(PRODUCTS_DB, JSON.stringify(productsStore, null, 2)); }
+function slugify(s){
+  return String(s).toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+}
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // до 8MB
+
 const PHOTOS_DB = path.join(__dirname, "photos.json");
 let photosStore = {};
 try { photosStore = JSON.parse(fs.readFileSync(PHOTOS_DB, "utf8")); } catch {}
@@ -28,6 +39,8 @@ const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID
   : (ADMIN_CHAT_IDS[0] || null);
 
 function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
+
+
 
 // ===== ENV =====
 const PORT = process.env.PORT || 10000;
@@ -269,7 +282,6 @@ app.post("/ask", async (req, res) => {
   }
 });
 
-
 // ===== Telegraf bot (вебхук) =====
 if (!BOT_TOKEN) {
   console.warn("BOT_TOKEN is not set — бот отключён");
@@ -363,7 +375,6 @@ function verifyInitData(initData, botToken) {
 
   return calc === hash && fresh;
 }
-
 
 async function notifyAdmins(text, tg) {
   // отправка через Telegram HTTP API (без зависимости от контекста Telegraf)
