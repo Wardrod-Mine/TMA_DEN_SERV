@@ -42,18 +42,21 @@ let photosStore = {};
 try { photosStore = JSON.parse(fs.readFileSync(PHOTOS_DB, "utf8")); } catch {}
 function savePhotos() { fs.writeFileSync(PHOTOS_DB, JSON.stringify(photosStore, null, 2)); }
 
+
+function userIdFromInitData(initData) {
+  const p = new URLSearchParams(initData);
+  try { return JSON.parse(p.get("user") || "{}")?.id ?? null; } catch { return null; }
+}
+
 // === admin ids & storage chat (ПЕРЕД любыми ссылками на них) ===
 const ADMIN_CHAT_IDS = String(process.env.ADMIN_CHAT_IDS || "")
   .split(/\s*,\s*/).filter(Boolean);          // ["123", "456"]
+
 function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
 
 const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID
   ? String(process.env.STORAGE_CHAT_ID)
   : (ADMIN_CHAT_IDS[0] || null);
-
-function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
-
-
 
 // ===== ENV =====
 const PORT = process.env.PORT || 10000;
@@ -78,16 +81,7 @@ function hitOk(key, windowMs = 30_000, max = 1) {
   _spam.set(key, fresh);
   return true;
 }
-/** Достаём user.id из безопасного initData WebApp (не из body). */
-function userIdFromInitData(initData) {
-  try {
-    const p = new URLSearchParams(initData || "");
-    const u = p.get("user");
-    if (!u) return null;
-    const obj = JSON.parse(u);
-    return obj?.id || null;
-  } catch { return null; }
-}
+
 
 
 // ===== Express =====
