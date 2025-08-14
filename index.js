@@ -45,6 +45,7 @@ function savePhotos() { fs.writeFileSync(PHOTOS_DB, JSON.stringify(photosStore, 
 // === admin ids & storage chat (ПЕРЕД любыми ссылками на них) ===
 const ADMIN_CHAT_IDS = String(process.env.ADMIN_CHAT_IDS || "")
   .split(/\s*,\s*/).filter(Boolean);          // ["123", "456"]
+function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
 
 const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID
   ? String(process.env.STORAGE_CHAT_ID)
