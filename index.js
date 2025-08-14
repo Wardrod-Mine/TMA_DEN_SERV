@@ -239,6 +239,37 @@ app.post("/report-error", async (req, res) => {
   }
 });
 
+app.post("/ask", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) {
+      return res.status(403).json({ ok:false, error:"bad initData" });
+    }
+    const { text } = req.body || {};
+    if (!text || String(text).trim().length < 2) {
+      return res.status(400).json({ ok:false, error:"empty text" });
+    }
+
+    const p = new URLSearchParams(initData);
+    let user = {}; try { user = JSON.parse(p.get("user") || "{}"); } catch {}
+    const who = user?.username ? `@${user.username} (id ${user.id})`
+              : user?.id ? `id ${user.id}` : "неизвестно";
+
+    const msg =
+      "❓ <b>Вопрос от пользователя</b>\n\n" +
+      `👤 <b>Кто:</b> ${esc(who)}\n\n` +
+      `📝 <b>Текст:</b>\n<pre>${esc(String(text)).slice(0,1500)}</pre>\n` +
+      `⏱ ${new Date().toLocaleString("ru-RU")}`;
+
+    await notifyAdmins(msg);
+    res.json({ ok:true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false });
+  }
+});
+
+
 // ===== Telegraf bot (вебхук) =====
 if (!BOT_TOKEN) {
   console.warn("BOT_TOKEN is not set — бот отключён");
