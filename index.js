@@ -23,6 +23,18 @@ function slugify(s){
     .replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
 }
 
+// --- услуги: правки и удаления в services.json ---
+const SERVICES_DB = path.join(__dirname, "services.json");
+let servicesStore = { updates: {}, deleted: [] };
+try {
+  servicesStore = JSON.parse(fs.readFileSync(SERVICES_DB, "utf8"));
+  if (!servicesStore || typeof servicesStore !== "object") servicesStore = { updates: {}, deleted: [] };
+} catch {}
+function saveServices(){
+  fs.writeFileSync(SERVICES_DB, JSON.stringify(servicesStore, null, 2));
+}
+
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // до 8MB
 
 const PHOTOS_DB = path.join(__dirname, "photos.json");
@@ -281,6 +293,66 @@ app.post("/ask", async (req, res) => {
     res.status(500).json({ ok:false });
   }
 });
+
+// Получить правки/удаления услуг
+app.get("/services", (req, res) => {
+  res.json({ ok:true, updates: servicesStore.updates || {}, deleted: servicesStore.deleted || [] });
+});
+
+// Обновить (отредактировать) услугу по id
+app.patch("/services/:id", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) return res.status(403).json({ ok:false, error:"bad initData" });
+
+    const uid = userIdFromInitData(initData);
+    if (!isAdmin(String(uid))) return res.status(403).json({ ok:false, error:"not admin" });
+
+    const id = String(req.params.id);
+    const { title, price_from, duration, desc } = req.body || {};
+    const patch = {};
+    if (typeof title === "string" && title.trim()) patch.title = title.trim();
+    if (Number.isFinite(Number(price_from)) && Number(price_from) >= 0) patch.price_from = Number(price_from);
+    if (typeof duration === "string") patch.duration = duration.trim();
+    if (typeof desc === "string") patch.desc = desc.trim();
+
+    if (!Object.keys(patch).length) return res.status(400).json({ ok:false, error:"empty patch" });
+
+    servicesStore.updates[id] = { ...(servicesStore.updates[id] || {}), ...patch };
+    // если услугу раньше пометили удалённой — снимаем пометку
+    servicesStore.deleted = (servicesStore.deleted || []).filter(sid => sid !== id);
+    saveServices();
+
+    await notifyAdmins(`✏️ <b>Услуга изменена</b>\n<b>ID:</b> ${esc(id)}\n${patch.title ? `Название: <b>${esc(patch.title)}</b>\n` : ""}${patch.price_from!=null ? `От: <b>${patch.price_from} ₽</b>\n` : ""}${patch.duration ? `Время: <b>${esc(patch.duration)}</b>\n` : ""}`);
+    res.json({ ok:true, id, patch: servicesStore.updates[id] });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error:"server" });
+  }
+});
+
+// Удалить (скрыть) услугу по id
+app.delete("/services/:id", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) return res.status(403).json({ ok:false, error:"bad initData" });
+
+    const uid = userIdFromInitData(initData);
+    if (!isAdmin(String(uid))) return res.status(403).json({ ok:false, error:"not admin" });
+
+    const id = String(req.params.id);
+    servicesStore.deleted = Array.from(new Set([...(servicesStore.deleted || []), id]));
+    if (servicesStore.updates[id]) delete servicesStore.updates[id];
+    saveServices();
+
+    await notifyAdmins(`🗑 <b>Услуга удалена</b>\n<b>ID:</b> ${esc(id)}`);
+    res.json({ ok:true, id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error:"server" });
+  }
+});
+
 
 // ===== Telegraf bot (вебхук) =====
 if (!BOT_TOKEN) {
