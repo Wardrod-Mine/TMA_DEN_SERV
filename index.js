@@ -4,6 +4,24 @@ import crypto from "crypto";
 import cors from "cors";
 import { Telegraf } from "telegraf";
 
+// --- фото: хранение file_id и прокси ---
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } }); // до 8MB
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PHOTOS_DB = path.join(__dirname, "photos.json");
+let photosStore = {};
+try { photosStore = JSON.parse(fs.readFileSync(PHOTOS_DB, "utf8")); } catch {}
+function savePhotos() { fs.writeFileSync(PHOTOS_DB, JSON.stringify(photosStore, null, 2)); }
+
+const STORAGE_CHAT_ID = process.env.STORAGE_CHAT_ID || (ADMIN_CHAT_IDS[0] || null); // куда шлём sendPhoto
+function isAdmin(id) { return ADMIN_CHAT_IDS.includes(String(id)); }
+
 // ===== ENV =====
 const PORT = process.env.PORT || 10000;
 const BOT_TOKEN = process.env.BOT_TOKEN;              // токен бота
@@ -51,6 +69,88 @@ app.use(cors({
 }));
 
 app.get("/", (_, res) => res.send("TMA backend is running"));
+
+app.get("/me", (req, res) => {
+  const initData = req.get("X-Telegram-Init-Data") || "";
+  const ok = verifyInitData(initData, BOT_TOKEN);
+  if (!ok) return res.status(403).json({ ok:false });
+  const p = new URLSearchParams(initData);
+  const user = p.get("user"); // строка JSON
+  let uid = null; try { uid = JSON.parse(user)?.id; } catch {}
+  return res.json({ ok:true, admin: isAdmin(String(uid)) });
+});
+
+// список фото по сервису
+app.get("/photos/:serviceId", (req, res) => {
+  const list = photosStore[req.params.serviceId] || [];
+  // отдаём «проксированные» URL, чтобы не светить токен
+  const items = list.map(fid => ({ file_id: fid, url: `/file/${encodeURIComponent(fid)}` }));
+  res.json({ ok:true, items });
+});
+
+// прокси файла из Telegram, кэшируем file_path в памяти
+const filePathCache = new Map();
+app.get("/file/:fileId", async (req, res) => {
+  try {
+    const file_id = req.params.fileId;
+    let file_path = filePathCache.get(file_id);
+    if (!file_path) {
+      const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile`, {
+        method: "POST", headers: { "Content-Type":"application/json" },
+        body: JSON.stringify({ file_id })
+      });
+      const j = await r.json();
+      if (!j.ok) return res.sendStatus(404);
+      file_path = j.result.file_path;
+      filePathCache.set(file_id, file_path);
+    }
+    const tgResp = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${file_path}`);
+    if (!tgResp.ok) return res.sendStatus(404);
+    res.setHeader("Content-Type", tgResp.headers.get("content-type") || "image/jpeg");
+    tgResp.body.pipe(res);
+  } catch (e) {
+    console.error(e);
+    res.sendStatus(500);
+  }
+});
+
+// загрузка фото админом
+app.post("/photos/:serviceId", upload.single("photo"), async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) return res.status(403).json({ ok:false, error:"bad initData" });
+
+    const p = new URLSearchParams(initData);
+    let uid = null; try { uid = JSON.parse(p.get("user")||"{}")?.id; } catch {}
+    if (!isAdmin(String(uid))) return res.status(403).json({ ok:false, error:"not admin" });
+
+    if (!req.file) return res.status(400).json({ ok:false, error:"no file" });
+    if (!STORAGE_CHAT_ID) return res.status(500).json({ ok:false, error:"no STORAGE_CHAT_ID" });
+
+    // шлём фото «на склад» (в твой чат/канал), берём file_id
+    const form = new FormData();
+    form.append("chat_id", STORAGE_CHAT_ID);
+    form.append("caption", `#store service:${req.params.serviceId} ${new Date().toISOString()}`);
+    form.append("disable_notification", "true");
+    form.append("photo", new Blob([req.file.buffer]), "photo.jpg");
+
+    const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method:"POST", body: form });
+    const data = await resp.json();
+    if (!data.ok) return res.status(500).json({ ok:false, error:"sendPhoto failed" });
+    const sizes = data.result.photo || [];
+    const fid = sizes.at(-1)?.file_id; // самый большой
+    if (!fid) return res.status(500).json({ ok:false, error:"no file_id" });
+
+    photosStore[req.params.serviceId] = photosStore[req.params.serviceId] || [];
+    photosStore[req.params.serviceId].unshift(fid);
+    savePhotos();
+
+    res.json({ ok:true, file_id: fid });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
 
 // Приём «ручных» POST из фронта (опционально)
 app.post("/web-data", async (req, res) => {
@@ -138,7 +238,10 @@ if (!BOT_TOKEN) {
 } else {
   const bot = new Telegraf(BOT_TOKEN, { handlerTimeout: 9000 });
 
-  bot.command("id", (ctx) => ctx.reply(`chat_id: ${ctx.chat.id}`));
+  bot.command('id', (ctx) => {
+    return ctx.reply(`Ваш chat_id: <code>${ctx.from.id}</code>`, { parse_mode: 'HTML' });
+  });
+
 
   // данные из WebApp
   bot.on("message", async (ctx) => {
