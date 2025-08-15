@@ -289,6 +289,29 @@ app.post("/ask", async (req, res) => {
   }
 });
 
+app.post("/products", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) return res.status(403).json({ ok:false, error:"bad initData" });
+    const uid = userIdFromInitData(initData);
+    if (!isAdmin(String(uid))) return res.status(403).json({ ok:false, error:"not admin" });
+
+    const { title, price_from, desc } = req.body || {};
+    if (!title || !Number.isFinite(Number(price_from)) || Number(price_from) < 0) {
+      return res.status(400).json({ ok:false, error:"bad payload" });
+    }
+    const id = `${slugify(title)}_${Date.now()}`;
+    const item = { id, title: title.trim(), price_from: Number(price_from), desc: String(desc||"").trim(), images: [] };
+    productsStore.unshift(item);
+    saveProducts(); // уже есть в файле
+    await notifyAdmins(`🧾 <b>Новый товар</b>\n<b>${title}</b> • от ${price_from} ₽`);
+    res.json({ ok:true, item });
+  } catch(e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error:"server" });
+  }
+});
+
 // Получить правки/удаления услуг
 app.get("/services", (req, res) => {
   res.json({ ok:true, updates: servicesStore.updates || {}, deleted: servicesStore.deleted || [] });
