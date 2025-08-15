@@ -426,6 +426,45 @@ if (!BOT_TOKEN) {
   })();
 }
 
+app.post("/services", async (req, res) => {
+  try {
+    const initData = req.get("X-Telegram-Init-Data") || "";
+    if (!verifyInitData(initData, BOT_TOKEN)) return res.status(403).json({ ok:false, error:"bad initData" });
+
+    const uid = userIdFromInitData(initData);
+    if (!isAdmin(String(uid))) return res.status(403).json({ ok:false, error:"not admin" });
+
+    const { category, brand, model, title, price_from, duration, desc } = req.body || {};
+    if (!category || !brand || !model || !title || !Number.isFinite(Number(price_from)) || Number(price_from) < 0) {
+      return res.status(400).json({ ok:false, error:"bad payload" });
+    }
+
+    const id = `${String(category)}_${slugify(brand)}_${slugify(model)}_${slugify(title)}_${Date.now().toString(36)}`.slice(0, 80);
+    const item = {
+      id,
+      category: String(category),
+      brand: String(brand),
+      model: String(model),
+      title: String(title).trim(),
+      price_from: Number(price_from),
+      duration: String(duration || "").trim(),
+      desc: String(desc || "").trim()
+    };
+
+    // храним полную карточку в updates (поверх базового каталога)
+    servicesStore.updates[id] = item;
+    servicesStore.deleted = (servicesStore.deleted || []).filter(sid => sid !== id);
+    saveServices();
+
+    await notifyAdmins(`🆕 <b>Новая услуга</b>\n<b>${item.brand} ${item.model}</b>\n${item.title} • от ${item.price_from} ₽`);
+    res.json({ ok:true, item });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok:false, error:"server" });
+  }
+});
+
+
 app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 
 // ===== helpers =====
