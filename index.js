@@ -57,11 +57,21 @@ const setWebhook = async () => {
   console.log("Webhook set:", url);
 };
 
-// --- ЕДИНСТВЕННЫЙ обработчик вебхука ---
-app.use(WEBHOOK_PATH, (req, res) => {
+app.all(WEBHOOK_PATH, (req, res) => {
+  // Telegram может "прощупывать" URL не POST-ом → такие запросы отвечаем 200, чтобы не ловить 403
+  if (req.method !== "POST") {
+    return res.status(200).send("ok");
+  }
+
+  // Для POST проверяем секрет
   const got = (req.get("x-telegram-bot-api-secret-token") || "").trim();
-  console.log("[webhook] got=", JSON.stringify(got), " expected=", JSON.stringify(SECRET_TOKEN));
-  if (SECRET_TOKEN && got !== SECRET_TOKEN) return res.sendStatus(403);
+  console.log("[webhook]", req.method, "got=", JSON.stringify(got), "expected=", JSON.stringify(SECRET_TOKEN));
+
+  if (SECRET_TOKEN && got !== SECRET_TOKEN) {
+    return res.sendStatus(403);
+  }
+
+  // передаём апдейт в Telegraf
   return bot.webhookCallback(WEBHOOK_PATH)(req, res);
 });
 
@@ -74,12 +84,19 @@ app.get("/diag", async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
+await bot.telegram.setWebhook(`${SERVER_URL}${WEBHOOK_PATH}`, {
+  secret_token: SECRET_TOKEN, // уже нормализован
+});
+console.log("Webhook set:", `${SERVER_URL}${WEBHOOK_PATH}`);
+
+
 // --- старт сервера ---
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, async () => {
   console.log("Server running on", PORT);
   await setWebhook();
 });
+
 
 
 
