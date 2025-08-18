@@ -317,6 +317,19 @@ app.get("/services", (req, res) => {
   res.json({ ok:true, updates: servicesStore.updates || {}, deleted: servicesStore.deleted || [] });
 });
 
+app.get('/diag', async (req, res) => {
+  try {
+    const info = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getWebhookInfo`).then(r=>r.json());
+    const me   = await fetch(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/getMe`).then(r=>r.json());
+    res.json({ ok:true, me, webhook: info, env: {
+      SERVER_URL: process.env.SERVER_URL,
+      HAS_SECRET: !!process.env.SECRET_TOKEN,
+      CHANNEL_ID: process.env.CHANNEL_ID
+    }});
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+
 // Обновить (отредактировать) услугу по id
 app.patch("/services/:id", async (req, res) => {
   try {
@@ -370,6 +383,7 @@ app.delete("/services/:id", async (req, res) => {
     res.status(500).json({ ok:false, error:"server" });
   }
 });
+
 
 
 // ===== Telegraf bot (вебхук) =====
@@ -465,6 +479,15 @@ if (!BOT_TOKEN) {
     }
   })();
 }
+
+app.use(WEBHOOK_PATH, (req, res, next) => {
+  const got = req.get("x-telegram-bot-api-secret-token") || "";
+  // ВРЕМЕННО: посмотрим первые/последние символы для сравнения
+  console.log("Webhook secret got =", JSON.stringify(got),
+              "expected =", JSON.stringify(SECRET_TOKEN));
+  if (SECRET_TOKEN && got !== SECRET_TOKEN) return res.sendStatus(403);
+  return bot.webhookCallback(WEBHOOK_PATH)(req, res);
+});
 
 app.post("/services", async (req, res) => {
   try {
