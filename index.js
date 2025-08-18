@@ -66,7 +66,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;                 // токен бота
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || "")
   .split(",").map(s => s.trim()).filter(Boolean);
 const SERVER_URL = process.env.SERVER_URL;               // https://tma-den-serv.onrender.com
-const SECRET_TOKEN = process.env.SECRET_TOKEN || "";     // секрет для вебхука
+const SECRET_TOKEN = (process.env.SECRET_TOKEN || "").trim();     // секрет для вебхука
 const WEBHOOK_PATH = "/tg-webhook";
 
 // === anti-spam helpers ===
@@ -459,7 +459,7 @@ if (!BOT_TOKEN) {
 
   // защищаем вебхук секретом
   app.use(WEBHOOK_PATH, (req, res, next) => {
-    const got = req.get("x-telegram-bot-api-secret-token") || "";
+    const got = (req.get("x-telegram-bot-api-secret-token") || "").trim();
     if (SECRET_TOKEN && got !== SECRET_TOKEN) return res.sendStatus(403);
     return bot.webhookCallback(WEBHOOK_PATH)(req, res);
   });
@@ -479,27 +479,6 @@ if (!BOT_TOKEN) {
     }
   })();
 }
-
-const EXPECT = (process.env.SECRET_TOKEN || "").trim();
-
-app.use(WEBHOOK_PATH, (req, res, next) => {
-  const got = (req.get("x-telegram-bot-api-secret-token") || "").trim();
-
-  // ВРЕМЕННЫЙ лог — чтобы увидеть, что реально приходит от Telegram
-  console.log("[webhook] secret got =", JSON.stringify(got),
-              "expected =", JSON.stringify(EXPECT));
-
-  if (EXPECT && got !== EXPECT) {
-    // ВКЛЮЧИ временный байпас, если нужно «расшить» очередь и проверить команды:
-    if (process.env.ALLOW_UNSAFE_WEBHOOK === "true") {
-      console.warn("[webhook] secret mismatch, but ALLOW_UNSAFE_WEBHOOK=true → accepting update");
-      return bot.webhookCallback(WEBHOOK_PATH)(req, res);
-    }
-    return res.sendStatus(403);
-  }
-  return bot.webhookCallback(WEBHOOK_PATH)(req, res);
-});
-
 
 app.post("/services", async (req, res) => {
   try {
