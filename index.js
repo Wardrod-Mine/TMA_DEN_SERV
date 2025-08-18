@@ -381,7 +381,47 @@ if (!BOT_TOKEN) {
   bot.command('id', (ctx) => {
     return ctx.reply(`Ваш chat_id: <code>${ctx.from.id}</code>`, { parse_mode: 'HTML' });
   });
+  
+  // публикуем в канал красивый пост с кнопкой открытия TMA
+  bot.command('publish', async (ctx) => {
+    if (!ADMIN_CHAT_IDS.includes(String(ctx.from.id))) {
+      return ctx.reply('Недостаточно прав.');
+    }
+    const channel = process.env.CHANNEL_ID;
+    const frontUrl = process.env.FRONT_URL;
+    if (!channel || !frontUrl) {
+      return ctx.reply('CHANNEL_ID или FRONT_URL не заданы в ENV');
+    }
 
+    const postText = `🔥 <b>Автосервис онлайн — всё в один клик!</b>
+
+  🚗 Чип-тюнинг и дооснащение
+  ⚙️ Программирование блоков
+  🛠 Ремонт и диагностика
+  💨 Удаление катализатора
+  📲 Онлайн-заявка прямо в Telegram
+
+  Открой каталог и оформи заявку за 1 минуту 👇`;
+
+    try {
+      await ctx.telegram.sendMessage(channel, postText, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+        reply_markup: { inline_keyboard: [[{ text: 'Каталог', web_app: { url: frontUrl } }]] }
+      });
+      await ctx.reply('Пост с кнопкой отправлен в канал.');
+    } catch (e) {
+      await ctx.reply('Не удалось отправить пост: ' + (e.description || e.message || 'ошибка API'));
+    }
+  });
+
+
+  bot.start((ctx) => {
+    return ctx.replyWithHTML(
+      '👋 <b>Добро пожаловать!</b>\n' +
+      'Откройте мини-приложение через кнопку меню Telegram.'
+    );
+  });
 
   // данные из WebApp
   bot.on("message", async (ctx) => {
