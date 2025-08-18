@@ -58,7 +58,7 @@ const setWebhook = async () => {
 };
 
 app.all(WEBHOOK_PATH, (req, res) => {
-  // Telegram может "прощупывать" URL не POST-ом → такие запросы отвечаем 200, чтобы не ловить 403
+  // На любые НЕ-POST (GET/HEAD и т.п.) отвечаем 200 — иначе Telegram запишет 403 в getWebhookInfo.
   if (req.method !== "POST") {
     return res.status(200).send("ok");
   }
@@ -71,7 +71,6 @@ app.all(WEBHOOK_PATH, (req, res) => {
     return res.sendStatus(403);
   }
 
-  // передаём апдейт в Telegraf
   return bot.webhookCallback(WEBHOOK_PATH)(req, res);
 });
 
@@ -84,10 +83,6 @@ app.get("/diag", async (req, res) => {
   } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
 });
 
-await bot.telegram.setWebhook(`${SERVER_URL}${WEBHOOK_PATH}`, {
-  secret_token: SECRET_TOKEN, // уже нормализован
-});
-console.log("Webhook set:", `${SERVER_URL}${WEBHOOK_PATH}`);
 
 
 // --- старт сервера ---
@@ -96,6 +91,7 @@ app.listen(PORT, async () => {
   console.log("Server running on", PORT);
   await setWebhook();
 });
+
 
 
 
