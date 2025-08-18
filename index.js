@@ -480,14 +480,26 @@ if (!BOT_TOKEN) {
   })();
 }
 
+const EXPECT = (process.env.SECRET_TOKEN || "").trim();
+
 app.use(WEBHOOK_PATH, (req, res, next) => {
-  const got = req.get("x-telegram-bot-api-secret-token") || "";
-  // ВРЕМЕННО: посмотрим первые/последние символы для сравнения
-  console.log("Webhook secret got =", JSON.stringify(got),
-              "expected =", JSON.stringify(SECRET_TOKEN));
-  if (SECRET_TOKEN && got !== SECRET_TOKEN) return res.sendStatus(403);
+  const got = (req.get("x-telegram-bot-api-secret-token") || "").trim();
+
+  // ВРЕМЕННЫЙ лог — чтобы увидеть, что реально приходит от Telegram
+  console.log("[webhook] secret got =", JSON.stringify(got),
+              "expected =", JSON.stringify(EXPECT));
+
+  if (EXPECT && got !== EXPECT) {
+    // ВКЛЮЧИ временный байпас, если нужно «расшить» очередь и проверить команды:
+    if (process.env.ALLOW_UNSAFE_WEBHOOK === "true") {
+      console.warn("[webhook] secret mismatch, but ALLOW_UNSAFE_WEBHOOK=true → accepting update");
+      return bot.webhookCallback(WEBHOOK_PATH)(req, res);
+    }
+    return res.sendStatus(403);
+  }
   return bot.webhookCallback(WEBHOOK_PATH)(req, res);
 });
+
 
 app.post("/services", async (req, res) => {
   try {
