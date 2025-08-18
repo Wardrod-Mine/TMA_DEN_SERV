@@ -456,28 +456,30 @@ if (!BOT_TOKEN) {
     }
     await ctx.reply("✅ Заявка принята, скоро свяжемся!");
   });
-
-  // защищаем вебхук секретом
-  app.use(WEBHOOK_PATH, (req, res, next) => {
+  // === Константы ===
+  const WEBHOOK_PATH = "/tg-webhook";
+  const SERVER_URL   = (process.env.SERVER_URL || "").trim();
+  const SECRET_TOKEN = (process.env.SECRET_TOKEN || "").trim();
+  
+  // === Установка вебхука на старте ===
+  await bot.telegram.setWebhook(`${SERVER_URL}${WEBHOOK_PATH}`, {
+    secret_token: SECRET_TOKEN,   // уже без лишних пробелов
+  });
+  
+  // === ЕДИНСТВЕННЫЙ обработчик вебхука ===
+  app.use(WEBHOOK_PATH, (req, res) => {
     const got = (req.get("x-telegram-bot-api-secret-token") || "").trim();
+  
+    // Временный лог сравнения — увидим реально приходящее значение
+    console.log(
+      "[webhook] got=" + JSON.stringify(got),
+      " expected=" + JSON.stringify(SECRET_TOKEN)
+    );
+  
     if (SECRET_TOKEN && got !== SECRET_TOKEN) return res.sendStatus(403);
     return bot.webhookCallback(WEBHOOK_PATH)(req, res);
   });
 
-  // ставим вебхук на старте (если указан SERVER_URL)
-  (async () => {
-    try {
-      if (SERVER_URL) {
-        await bot.telegram.setWebhook(`${SERVER_URL}${WEBHOOK_PATH}`, { secret_token: SECRET_TOKEN });
-        console.log("Webhook set:", `${SERVER_URL}${WEBHOOK_PATH}`);
-      } else {
-        const info = await bot.telegram.getWebhookInfo();
-        console.log("Webhook info:", info);
-      }
-    } catch (e) {
-      console.error("setWebhook error:", e.response?.description || e.message);
-    }
-  })();
 }
 
 app.post("/services", async (req, res) => {
@@ -569,3 +571,4 @@ async function notifyAdmins(text, tg) {
     })
   ));
 }
+
