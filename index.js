@@ -425,7 +425,7 @@ if (!BOT_TOKEN) {
 
     // В КАНАЛ — только URL-кнопка с startapp
     const inlineKeyboardForChannel = [
-      [{ text: 'Каталог', url: `https://t.me/${botUsername}?startapp=catalog` }]
+      [{ text: 'Выбрать услугу', url: `https://t.me/${botUsername}?startapp=catalog` }]
     ];
 
     try {
