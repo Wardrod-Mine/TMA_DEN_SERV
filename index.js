@@ -401,33 +401,45 @@ if (!BOT_TOKEN) {
     if (!ADMIN_CHAT_IDS.includes(String(ctx.from.id))) {
       return ctx.reply('Недостаточно прав.');
     }
-    const channel = process.env.CHANNEL_ID;
-    const frontUrl = process.env.FRONT_URL;
-    if (!channel || !frontUrl) {
-      return ctx.reply('CHANNEL_ID или FRONT_URL не заданы в ENV');
-    }
 
-    const postText = `🔥 <b>Автосервис онлайн — всё в один клик!</b>
+    const channel = process.env.CHANNEL_ID;       // @den_customs
+    const frontUrl = process.env.FRONT_URL;       // https://telegram-mini-app-assets.onrender.com
+    const botUsername = 'AutoServiceXBot';        // если не хочешь хардкод — получай через getMe на старте
 
-  🚗 Чип-тюнинг и дооснащение
+    const postText = `🔥 <b>🚀 Теперь ещё удобнее!</b>
+
+  Мы запустили мини-приложение прямо в Telegram — теперь не нужно листать ленты и писать вручную.
+  Достаточно открыть меню и выбрать нужные услуги:
+
+  🇷🇺 Русификация
+  ⌚️ Пробег
+  🔧 Дооснащения
   ⚙️ Программирование блоков
-  🛠 Ремонт и диагностика
-  💨 Удаление катализатора
+  🚗 Чип-тюнинг
+  🛠 Ремонт блоков SRS
   📲 Онлайн-заявка прямо в Telegram
 
-  Открой каталог и оформи заявку за 1 минуту 👇`;
+  👉 Всё в одном месте, быстро и удобно.
+
+  Попробуй прямо сейчас — выбери услугу в нашем мини-апе и оставь заявку!👇👇`;
+
+    // В КАНАЛ — только URL-кнопка с startapp
+    const inlineKeyboardForChannel = [
+      [{ text: 'Каталог', url: `https://t.me/${botUsername}?startapp=catalog` }]
+    ];
 
     try {
       await ctx.telegram.sendMessage(channel, postText, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
-        reply_markup: { inline_keyboard: [[{ text: 'Каталог', web_app: { url: frontUrl } }]] }
+        reply_markup: { inline_keyboard: inlineKeyboardForChannel }
       });
       await ctx.reply('Пост с кнопкой отправлен в канал.');
     } catch (e) {
-      await ctx.reply('Не удалось отправить пост: ' + (e.description || e.message || 'ошибка API'));
+      await ctx.reply('Не удалось отправить пост: ' + (e.description || e.message));
     }
   });
+
 
 
   bot.start((ctx) => {
