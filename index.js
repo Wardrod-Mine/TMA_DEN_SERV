@@ -540,6 +540,14 @@ app.listen(PORT, () => console.log(`Server running on ${PORT}`));
 // ===== helpers =====
 function esc(s = "") { return String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 function formatLead(p, from) {
+  const who = (() => {
+  if (!from) return null;
+  if (from.username) {
+    return `От: <a href="https://t.me/${from.username}">@${esc(from.username)}</a>`;
+  }
+  const name = from.first_name || "user";
+  return `От: <b>${esc(name)}</b>`;
+  })();
   return [
     `<b>Новая заявка</b>`,
     p.category ? `Категория: <b>${esc(p.category)}</b>` : null,
